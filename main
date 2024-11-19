@@ -1,0 +1,134 @@
+#include <Adafruit_SSD1306.h>
+#include <Adafruit_GFX.h>
+#include <DHT.h>
+
+// Pin Definitions
+#define DHTPIN 2            // DHT11 data pin
+#define DHTTYPE DHT11       // DHT11 sensor type
+#define MQ135_PIN A0        // MQ-135 analog pin
+#define TRIG_PIN 8          // Ultrasonic sensor trigger pin
+#define ECHO_PIN 9          // Ultrasonic sensor echo pin
+#define BUZZER_PIN 7        // Buzzer pin
+#define SCREEN_WIDTH 128    // OLED display width
+#define SCREEN_HEIGHT 64    // OLED display height
+
+// OLED Display Initialization
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+DHT dht(DHTPIN, DHTTYPE);
+
+// Threshold for good or bad air quality (approximate values, can be adjusted)
+const int AQI_THRESHOLD = 100;  // Threshold for air quality index
+const int ALERT_DISTANCE = 20;    // Distance threshold in cm for alert
+
+void setup() {
+  // Initialize serial communication
+  Serial.begin(9600);
+  
+  // Initialize DHT sensor
+  dht.begin();
+  
+  // Initialize OLED display
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;);
+  }
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.display();
+  
+  // Initialize ultrasonic sensor pins
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  
+  // Initialize buzzer pin
+  pinMode(BUZZER_PIN, OUTPUT);
+  
+  // Give a short delay for sensor setup
+  delay(300);
+}
+
+void loop() {
+  // Read temperature and humidity from DHT11
+  float humidity = dht.readHumidity();
+  float temperature = dht.readTemperature();
+  
+  // Read air quality from MQ-135
+  int mq135_value = analogRead(MQ135_PIN);
+  
+  // Print AQI value for debugging
+  Serial.print("MQ-135 Value: ");
+  Serial.println(mq135_value);
+  
+  // Determine air quality status
+  String airQuality = (mq135_value < AQI_THRESHOLD) ? "Good" : "Bad";
+  
+  // Read distance from ultrasonic sensor
+  long distance = readUltrasonicDistance();
+  
+  // Check if distance is less than alert distance
+  if (distance > 0 && distance < ALERT_DISTANCE) {
+    // Activate the buzzer
+    tone(BUZZER_PIN, 3000); // 1000 Hz tone
+    // Display "ALERT" in big font
+    display.clearDisplay();
+    display.setTextSize(3);  // Set a larger font size for ALERT
+    display.setCursor(0, 0);
+    display.print("ALERT");
+    display.display();
+    
+    // Wait for 5 seconds
+    delay(200);
+    
+    // Turn off the buzzer
+    noTone(BUZZER_PIN);
+  } else {
+    // Display sensor readings on OLED
+    display.clearDisplay();
+    display.setTextSize(2);  // Set a smaller font size for readings
+    display.setCursor(0, 0);
+    
+    // Display humidity
+    display.print("Hmd: ");
+    display.print(humidity, 1);  // Display humidity with 1 decimal precision
+    display.println("%");
+    
+    // Display temperature
+    display.print("Tem: ");
+    display.print(temperature, 1);  // Display temperature
+    display.println("C");
+    
+    // Display AQI
+    display.print("AQI: ");
+    display.print(mq135_value);
+    display.print("\n");
+    display.println(airQuality);
+    
+    display.display();
+  }
+  
+  // Add a small delay before the next reading
+  delay(200);
+}
+
+// Function to read distance from the ultrasonic sensor
+long readUltrasonicDistance() {
+  // Send a 10us pulse to trigger the measurement
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  
+  // Measure the time for the echo to return
+  long duration = pulseIn(ECHO_PIN, HIGH);
+  
+  // Calculate the distance in centimeters
+  long distance = duration * 0.034 / 2;
+  
+  // Print distance for debugging purposes
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+  
+  return distance;
+}
